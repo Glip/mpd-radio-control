@@ -78,9 +78,15 @@
       els.duration.textContent = fmtTime(dur);
     }
 
-    if (!state.volumeDragging && status.volume != null && status.volume >= 0) {
-      els.volume.value = String(status.volume);
-      els.volumeVal.textContent = String(status.volume);
+    if (!state.volumeDragging) {
+      if (status.volume != null && status.volume >= 0) {
+        els.volume.disabled = false;
+        els.volume.value = String(status.volume);
+        els.volumeVal.textContent = String(status.volume);
+      } else {
+        els.volume.disabled = true;
+        els.volumeVal.textContent = "n/a";
+      }
     }
 
     for (const chip of $$(".chip[data-option]")) {
