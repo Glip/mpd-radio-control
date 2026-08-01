@@ -1,0 +1,24 @@
+# Radio Desk configuration.
+# Mount this file into the container, e.g.:
+#   -v ./config/config.yaml:/config/config.yaml:ro
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  mpd_timeout: 5
+  max_upload_mb: 500
+
+# Each entry is one MPD instance / radio station.
+instances:
+  - id: rock
+    host: mpd-rock
+    port: 6600
+    music_dir: /music/rock
+    label: Rock Radio
+    # password: secret
+
+  - id: jazz
+    host: mpd-jazz
+    port: 6600
+    music_dir: /music/jazz
+    label: Jazz Radio

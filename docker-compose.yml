@@ -8,12 +8,8 @@ services:
     container_name: radio-desk
     ports:
       - "8080:8080"
-    environment:
-      MPD_INSTANCES: >-
-        rock:mpd-rock:6600:/music/rock:Rock Radio,
-        jazz:mpd-jazz:6600:/music/jazz:Jazz Radio
-      MAX_UPLOAD_MB: "500"
     volumes:
+      - ./config/config.yaml:/config/config.yaml:ro
       - music_rock:/music/rock
       - music_jazz:/music/jazz
     depends_on:

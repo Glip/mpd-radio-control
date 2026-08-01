@@ -15,6 +15,8 @@
 
 ## Быстрый старт
 
+Отредактируйте `config/config.yaml`, затем:
+
 ```bash
 docker compose up -d --build
 ```
@@ -35,11 +37,19 @@ mpc -h 127.0.0.1 -p 6602 status
 
 ## Только панель (свои MPD уже запущены)
 
+1. Скопируйте пример и поправьте хосты/порты/каталоги:
+
+```bash
+cp config/config.example.yaml config/config.yaml
+```
+
+2. Запустите с примонтированным конфигом и музыкой:
+
 ```bash
 docker build -t radio-desk .
 docker run -d --name radio-desk \
   -p 8080:8080 \
-  -e MPD_INSTANCES="rock:host.docker.internal:6601:/music/rock:Rock,jazz:host.docker.internal:6602:/music/jazz:Jazz" \
+  -v ./config/config.yaml:/config/config.yaml:ro \
   -v /path/to/rock/music:/music/rock \
   -v /path/to/jazz/music:/music/jazz \
   radio-desk
@@ -49,40 +59,49 @@ docker run -d --name radio-desk \
 
 ## Конфигурация
 
-### `MPD_INSTANCES` (CSV)
+Весь runtime-конфиг — YAML-файл. По умолчанию контейнер читает `/config/config.yaml`.
 
+Пример (`config/config.yaml`):
+
+```yaml
+server:
+  host: 0.0.0.0
+  port: 8080
+  mpd_timeout: 5
+  max_upload_mb: 500
+
+instances:
+  - id: rock
+    host: mpd-rock
+    port: 6600
+    music_dir: /music/rock
+    label: Rock Radio
+    # password: secret
+
+  - id: jazz
+    host: mpd-jazz
+    port: 6600
+    music_dir: /music/jazz
+    label: Jazz Radio
 ```
-id:host:port[:music_dir[:label]]
-```
 
-Несколько станций — через запятую:
+| Поле | Описание |
+|------|----------|
+| `server.host` / `server.port` | Адрес HTTP-панели |
+| `server.mpd_timeout` | Таймаут команд MPD (сек) |
+| `server.max_upload_mb` | Лимит загрузки |
+| `instances[].id` | Уникальный id станции |
+| `instances[].host` / `port` | Адрес MPD |
+| `instances[].music_dir` | Куда писать загруженные треки |
+| `instances[].label` | Имя в UI |
+| `instances[].password` | Пароль MPD (опционально) |
 
-```
-rock:mpd-rock:6600:/music/rock:Rock Radio,jazz:mpd-jazz:6600:/music/jazz:Jazz Radio
-```
+Поиск файла:
 
-### `MPD_INSTANCES_JSON`
-
-```json
-[
-  {
-    "id": "rock",
-    "host": "mpd-rock",
-    "port": 6600,
-    "music_dir": "/music/rock",
-    "label": "Rock Radio"
-  }
-]
-```
-
-Опционально:
-
-| Переменная | Описание | По умолчанию |
-|------------|----------|--------------|
-| `APP_PORT` | Порт панели | `8080` |
-| `MPD_TIMEOUT` | Таймаут MPD (сек) | `5` |
-| `MAX_UPLOAD_MB` | Лимит загрузки | `500` |
-| `MPD_PASSWORD_<ID>` | Пароль MPD для станции | — |
+1. `RADIO_DESK_CONFIG` — явный путь (только если нужно)
+2. `/config/config.yaml`
+3. `/config/radio-desk.yaml`
+4. `./config/config.yaml` (локальный запуск)
 
 ## API (кратко)
 
@@ -98,8 +117,10 @@ rock:mpd-rock:6600:/music/rock:Rock Radio,jazz:mpd-jazz:6600:/music/jazz:Jazz Ra
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export MPD_INSTANCES="rock:127.0.0.1:6601:/tmp/music/rock:Rock"
-uvicorn app.main:app --reload --port 8080
+# использует ./config/config.yaml
+python -m app.run
+# или:
+RADIO_DESK_CONFIG=./config/config.yaml uvicorn app.main:app --reload --port 8080
 pytest
 ```
 
@@ -107,6 +128,7 @@ pytest
 
 ```
 app/                 # FastAPI + UI
+config/              # YAML-конфиг панели (монтируется в контейнер)
 mpd/                 # образ и конфиги демо-MPD
 Dockerfile           # образ панели radio-desk
 docker-compose.yml   # панель + 2 MPD

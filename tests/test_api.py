@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import MpdInstance, get_settings
+from app.config import get_settings
 from app.main import app
 
 
@@ -13,11 +13,22 @@ def configure_env(monkeypatch, tmp_path):
     get_settings.cache_clear()
     music = tmp_path / "music"
     music.mkdir()
-    monkeypatch.setenv(
-        "MPD_INSTANCES",
-        f"rock:127.0.0.1:6601:{music}:Rock Radio",
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        f"""
+server:
+  host: 127.0.0.1
+  port: 8080
+instances:
+  - id: rock
+    host: 127.0.0.1
+    port: 6601
+    music_dir: {music}
+    label: Rock Radio
+""",
+        encoding="utf-8",
     )
-    monkeypatch.delenv("MPD_INSTANCES_JSON", raising=False)
+    monkeypatch.setenv("RADIO_DESK_CONFIG", str(cfg))
     yield
     get_settings.cache_clear()
 

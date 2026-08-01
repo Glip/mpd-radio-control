@@ -1,0 +1,26 @@
+# Copy to config.yaml and edit for your MPD containers.
+#
+# docker run ... \
+#   -v ./config/config.yaml:/config/config.yaml:ro \
+#   -v /path/to/rock:/music/rock \
+#   -v /path/to/jazz:/music/jazz \
+#   radio-desk
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  mpd_timeout: 5
+  max_upload_mb: 500
+
+instances:
+  - id: rock
+    host: host.docker.internal
+    port: 6601
+    music_dir: /music/rock
+    label: Rock Radio
+
+  - id: jazz
+    host: host.docker.internal
+    port: 6602
+    music_dir: /music/jazz
+    label: Jazz Radio

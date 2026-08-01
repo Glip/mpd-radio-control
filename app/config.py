@@ -1,12 +1,35 @@
-"""Application configuration loaded from environment variables."""
+"""Application configuration loaded from a mounted YAML file."""
 
 from __future__ import annotations
 
-import json
 import os
-import re
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+DEFAULT_AUDIO_EXT = (
+    ".mp3",
+    ".flac",
+    ".ogg",
+    ".oga",
+    ".opus",
+    ".m4a",
+    ".aac",
+    ".wav",
+    ".wma",
+    ".aiff",
+    ".aif",
+)
+
+# Search order for the config file. Override with RADIO_DESK_CONFIG=/path/to.yaml
+CONFIG_CANDIDATES = (
+    Path("/config/config.yaml"),
+    Path("/config/radio-desk.yaml"),
+    Path("config/config.yaml"),
+)
 
 
 @dataclass(frozen=True)
@@ -21,71 +44,6 @@ class MpdInstance:
     password: str | None = None
 
 
-_INSTANCE_RE = re.compile(
-    r"^(?P<id>[^:]+):(?P<host>[^:]+):(?P<port>\d+)(?::(?P<music_dir>[^:]*))?(?::(?P<label>.*))?$"
-)
-
-
-def _parse_csv_instances(raw: str) -> list[MpdInstance]:
-    """
-    Parse MPD_INSTANCES CSV format:
-      id:host:port[:music_dir[:label]]
-    Multiple instances separated by commas.
-    Example: rock:mpd-rock:6600:/music/rock:Rock Radio,jazz:mpd-jazz:6600:/music/jazz
-    """
-    instances: list[MpdInstance] = []
-    for chunk in raw.split(","):
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        match = _INSTANCE_RE.match(chunk)
-        if not match:
-            raise ValueError(
-                f"Invalid MPD_INSTANCES entry: {chunk!r}. "
-                "Expected id:host:port[:music_dir[:label]]"
-            )
-        instance_id = match.group("id").strip()
-        host = match.group("host").strip()
-        port = int(match.group("port"))
-        music_dir = (match.group("music_dir") or "").strip() or f"/music/{instance_id}"
-        label = (match.group("label") or "").strip() or instance_id
-        password = os.getenv(f"MPD_PASSWORD_{instance_id.upper().replace('-', '_')}")
-        instances.append(
-            MpdInstance(
-                id=instance_id,
-                host=host,
-                port=port,
-                music_dir=music_dir,
-                label=label,
-                password=password or None,
-            )
-        )
-    return instances
-
-
-def _parse_json_instances(raw: str) -> list[MpdInstance]:
-    data = json.loads(raw)
-    if not isinstance(data, list):
-        raise ValueError("MPD_INSTANCES_JSON must be a JSON array")
-    instances: list[MpdInstance] = []
-    for item in data:
-        instance_id = str(item["id"]).strip()
-        password = item.get("password") or os.getenv(
-            f"MPD_PASSWORD_{instance_id.upper().replace('-', '_')}"
-        )
-        instances.append(
-            MpdInstance(
-                id=instance_id,
-                host=str(item["host"]).strip(),
-                port=int(item["port"]),
-                music_dir=str(item.get("music_dir") or f"/music/{instance_id}"),
-                label=str(item.get("label") or instance_id),
-                password=password or None,
-            )
-        )
-    return instances
-
-
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings for the control panel."""
@@ -95,63 +53,127 @@ class Settings:
     port: int = 8080
     mpd_timeout: float = 5.0
     max_upload_mb: int = 500
-    allowed_audio_ext: tuple[str, ...] = (
-        ".mp3",
-        ".flac",
-        ".ogg",
-        ".oga",
-        ".opus",
-        ".m4a",
-        ".aac",
-        ".wav",
-        ".wma",
-        ".aiff",
-        ".aif",
+    config_path: str | None = None
+    allowed_audio_ext: tuple[str, ...] = DEFAULT_AUDIO_EXT
+
+
+def resolve_config_path(explicit: str | None = None) -> Path:
+    """Return the first existing config path."""
+    if explicit:
+        path = Path(explicit).expanduser()
+        if not path.is_file():
+            raise FileNotFoundError(f"Config file not found: {path}")
+        return path.resolve()
+
+    env_path = os.getenv("RADIO_DESK_CONFIG", "").strip()
+    if env_path:
+        path = Path(env_path).expanduser()
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"RADIO_DESK_CONFIG points to missing file: {path}"
+            )
+        return path.resolve()
+
+    for candidate in CONFIG_CANDIDATES:
+        if candidate.is_file():
+            return candidate.resolve()
+
+    searched = ", ".join(str(p) for p in CONFIG_CANDIDATES)
+    raise FileNotFoundError(
+        "No config file found. Mount a YAML config to /config/config.yaml "
+        f"or set RADIO_DESK_CONFIG. Searched: {searched}"
+    )
+
+
+def _parse_instances(raw: Any) -> list[MpdInstance]:
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("Config key 'instances' must be a non-empty list")
+
+    instances: list[MpdInstance] = []
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise ValueError(f"instances[{index}] must be a mapping")
+        try:
+            instance_id = str(item["id"]).strip()
+            host = str(item["host"]).strip()
+            port = int(item["port"])
+        except KeyError as exc:
+            raise ValueError(
+                f"instances[{index}] is missing required field: {exc.args[0]}"
+            ) from exc
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"instances[{index}].port must be an integer") from exc
+
+        if not instance_id:
+            raise ValueError(f"instances[{index}].id must not be empty")
+        if not host:
+            raise ValueError(f"instances[{index}].host must not be empty")
+
+        music_dir = str(item.get("music_dir") or f"/music/{instance_id}").strip()
+        label = str(item.get("label") or instance_id).strip()
+        password = item.get("password")
+        if password is not None:
+            password = str(password) or None
+
+        instances.append(
+            MpdInstance(
+                id=instance_id,
+                host=host,
+                port=port,
+                music_dir=music_dir,
+                label=label,
+                password=password,
+            )
+        )
+    return instances
+
+
+def load_settings_from_file(path: Path) -> Settings:
+    """Parse Settings from a YAML config file."""
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid YAML in {path}: {exc}") from exc
+
+    if raw is None:
+        raw = {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"Config root in {path} must be a mapping")
+
+    server = raw.get("server") or {}
+    if not isinstance(server, dict):
+        raise ValueError("Config key 'server' must be a mapping")
+
+    instances = _parse_instances(raw.get("instances"))
+    ids = [i.id for i in instances]
+    if len(ids) != len(set(ids)):
+        raise ValueError("MPD instance ids must be unique")
+
+    exts = server.get("allowed_audio_ext")
+    if exts is None:
+        allowed = DEFAULT_AUDIO_EXT
+    else:
+        if not isinstance(exts, list) or not exts:
+            raise ValueError("server.allowed_audio_ext must be a non-empty list")
+        allowed = tuple(
+            e if str(e).startswith(".") else f".{e}" for e in (str(x).lower() for x in exts)
+        )
+
+    return Settings(
+        instances=tuple(instances),
+        host=str(server.get("host") or "0.0.0.0"),
+        port=int(server.get("port") or 8080),
+        mpd_timeout=float(server.get("mpd_timeout") or 5),
+        max_upload_mb=int(server.get("max_upload_mb") or 500),
+        config_path=str(path),
+        allowed_audio_ext=allowed,
     )
 
 
 @lru_cache
 def get_settings() -> Settings:
-    json_raw = os.getenv("MPD_INSTANCES_JSON", "").strip()
-    csv_raw = os.getenv("MPD_INSTANCES", "").strip()
-
-    if json_raw:
-        instances = _parse_json_instances(json_raw)
-    elif csv_raw:
-        instances = _parse_csv_instances(csv_raw)
-    else:
-        # Sensible local/dev default matching docker-compose.yml
-        instances = [
-            MpdInstance(
-                id="rock",
-                host=os.getenv("MPD_HOST_ROCK", "mpd-rock"),
-                port=int(os.getenv("MPD_PORT_ROCK", "6600")),
-                music_dir="/music/rock",
-                label="Rock Radio",
-            ),
-            MpdInstance(
-                id="jazz",
-                host=os.getenv("MPD_HOST_JAZZ", "mpd-jazz"),
-                port=int(os.getenv("MPD_PORT_JAZZ", "6600")),
-                music_dir="/music/jazz",
-                label="Jazz Radio",
-            ),
-        ]
-
-    if not instances:
-        raise ValueError("At least one MPD instance must be configured")
-
-    ids = [i.id for i in instances]
-    if len(ids) != len(set(ids)):
-        raise ValueError("MPD instance ids must be unique")
-
-    return Settings(
-        instances=tuple(instances),
-        host=os.getenv("APP_HOST", "0.0.0.0"),
-        port=int(os.getenv("APP_PORT", "8080")),
-        mpd_timeout=float(os.getenv("MPD_TIMEOUT", "5")),
-        max_upload_mb=int(os.getenv("MAX_UPLOAD_MB", "500")),
-    )
+    path = resolve_config_path()
+    return load_settings_from_file(path)
 
 
 def get_instance(instance_id: str) -> MpdInstance:
