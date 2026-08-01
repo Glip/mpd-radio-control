@@ -1,0 +1,56 @@
+# Example stack: control panel + two MPD radio instances.
+# Shared music volumes let the panel upload tracks/albums that MPD can play.
+
+services:
+  radio-desk:
+    build: .
+    image: radio-desk:latest
+    container_name: radio-desk
+    ports:
+      - "8080:8080"
+    environment:
+      MPD_INSTANCES: >-
+        rock:mpd-rock:6600:/music/rock:Rock Radio,
+        jazz:mpd-jazz:6600:/music/jazz:Jazz Radio
+      MAX_UPLOAD_MB: "500"
+    volumes:
+      - music_rock:/music/rock
+      - music_jazz:/music/jazz
+    depends_on:
+      - mpd-rock
+      - mpd-jazz
+    restart: unless-stopped
+
+  mpd-rock:
+    build: ./mpd
+    image: mpd-radio:latest
+    container_name: mpd-rock
+    volumes:
+      - music_rock:/music
+      - ./mpd/rock/mpd.conf:/config/mpd.conf:ro
+      - mpd_rock_data:/var/lib/mpd
+    ports:
+      # Host port for classic mpc: mpc -h 127.0.0.1 -p 6601 status
+      - "6601:6600"
+      # HTTP stream (Icecast-like via MPD httpd output)
+      - "8001:8000"
+    restart: unless-stopped
+
+  mpd-jazz:
+    build: ./mpd
+    image: mpd-radio:latest
+    container_name: mpd-jazz
+    volumes:
+      - music_jazz:/music
+      - ./mpd/jazz/mpd.conf:/config/mpd.conf:ro
+      - mpd_jazz_data:/var/lib/mpd
+    ports:
+      - "6602:6600"
+      - "8002:8000"
+    restart: unless-stopped
+
+volumes:
+  music_rock:
+  music_jazz:
+  mpd_rock_data:
+  mpd_jazz_data:

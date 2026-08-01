@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Radio Desk — MPD Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <div class="atmosphere" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="brand-block">
+      <p class="brand">Radio Desk</p>
+      <p class="tagline">Панель управления интернет-радио MPD</p>
+    </div>
+    <div class="top-meta">
+      <span class="pulse-dot" id="live-dot" aria-hidden="true"></span>
+      <span id="conn-label">подключение…</span>
+      <span class="ver">v{{ version }}</span>
+    </div>
+  </header>
+
+  <main>
+    <nav class="stations" id="stations" aria-label="Станции">
+      {% for i in instances %}
+      <button
+        type="button"
+        class="station{% if loop.first %} is-active{% endif %}"
+        data-id="{{ i.id }}"
+        data-label="{{ i.label }}"
+      >
+        <span class="station-label">{{ i.label }}</span>
+        <span class="station-endpoint">{{ i.host }}:{{ i.port }}</span>
+      </button>
+      {% endfor %}
+    </nav>
+
+    <section class="deck" aria-labelledby="now-title">
+      <div class="deck-head">
+        <div>
+          <p class="eyebrow" id="station-name">—</p>
+          <h1 id="now-title">Нет сигнала</h1>
+          <p class="now-meta" id="now-meta">Выберите станцию и нажмите Play</p>
+        </div>
+        <div class="state-badge" id="state-badge" data-state="stop">STOP</div>
+      </div>
+
+      <div class="progress-wrap">
+        <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="Позиция трека" />
+        <div class="time-row">
+          <span id="elapsed">0:00</span>
+          <span id="duration">0:00</span>
+        </div>
+      </div>
+
+      <div class="transport" role="group" aria-label="Управление воспроизведением">
+        <button type="button" class="tbtn" data-action="previous" title="Предыдущий" aria-label="Предыдущий трек">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M6 6h2v12H6V6zm3.5 6 8.5 6V6l-8.5 6z"/></svg>
+        </button>
+        <button type="button" class="tbtn" data-action="stop" title="Стоп" aria-label="Стоп">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M6 6h12v12H6z"/></svg>
+        </button>
+        <button type="button" class="tbtn tbtn-main" data-action="toggle" title="Play / Pause" aria-label="Play или Pause" id="toggle-btn">
+          <svg class="icon-play" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7L8 5z"/></svg>
+          <svg class="icon-pause" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M6 5h4v14H6V5zm8 0h4v14h-4V5z"/></svg>
+        </button>
+        <button type="button" class="tbtn" data-action="next" title="Следующий" aria-label="Следующий трек">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M16 6h2v12h-2V6zM6 18l8.5-6L6 6v12z"/></svg>
+        </button>
+        <button type="button" class="tbtn" data-action="update" title="Обновить БД" aria-label="Обновить базу MPD">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5a5 5 0 0 1-8.9 3h-2.1A7 7 0 0 0 12 6z"/></svg>
+        </button>
+      </div>
+
+      <div class="mixer">
+        <label class="vol" for="volume">
+          <span>Громкость</span>
+          <input type="range" id="volume" min="0" max="100" value="50" />
+          <strong id="volume-val">50</strong>
+        </label>
+        <div class="opts" role="group" aria-label="Режимы">
+          <button type="button" class="chip" data-option="repeat">Repeat</button>
+          <button type="button" class="chip" data-option="random">Random</button>
+          <button type="button" class="chip" data-option="single">Single</button>
+          <button type="button" class="chip" data-option="consume">Consume</button>
+          <button type="button" class="chip danger" data-action="clear">Clear playlist</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="split">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Плейлист</h2>
+          <button type="button" class="text-btn" id="refresh-playlist">Обновить</button>
+        </div>
+        <ol class="playlist" id="playlist"></ol>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Загрузка</h2>
+        </div>
+
+        <form id="track-form" class="upload-form">
+          <h3>Отдельный трек</h3>
+          <label>
+            Файл
+            <input type="file" name="file" accept="audio/*,.mp3,.flac,.ogg,.opus,.m4a,.wav" required />
+          </label>
+          <label>
+            Подпапка (опционально)
+            <input type="text" name="subdirectory" placeholder="singles" />
+          </label>
+          <label class="check">
+            <input type="checkbox" name="play_now" />
+            Сразу воспроизвести
+          </label>
+          <button type="submit" class="primary">Загрузить трек</button>
+        </form>
+
+        <form id="album-form" class="upload-form">
+          <h3>Новый альбом</h3>
+          <label>
+            Название альбома
+            <input type="text" name="album_name" placeholder="Night Drive" required />
+          </label>
+          <label>
+            Треки (несколько файлов)
+            <input type="file" name="files" accept="audio/*,.mp3,.flac,.ogg,.opus,.m4a,.wav" multiple />
+          </label>
+          <label>
+            Или ZIP-архив
+            <input type="file" name="archive" accept=".zip,application/zip" />
+          </label>
+          <label class="check">
+            <input type="checkbox" name="play_now" />
+            Очистить плейлист и играть альбом
+          </label>
+          <button type="submit" class="primary">Загрузить альбом</button>
+        </form>
+
+        <p class="upload-status" id="upload-status" role="status"></p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    window.RADIO_DESK = {
+      instances: {{ instances | tojson }}
+    };
+  </script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

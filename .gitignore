@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+music/**/*
+!music/**/.gitkeep
+*.flac
+*.mp3
+*.ogg
+*.wav
+*.m4a
+.env
