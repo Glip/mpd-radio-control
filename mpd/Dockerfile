@@ -1,7 +1,7 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends mpd \
+    && apt-get install -y --no-install-recommends mpd mpc \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /music /var/lib/mpd/playlists /run/mpd /config \
     && chown -R mpd:audio /music /var/lib/mpd /run/mpd /config

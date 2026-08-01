@@ -15,24 +15,28 @@
 
 ## Быстрый старт
 
-Отредактируйте `config/config.yaml`, затем:
+1. Проверьте станции в `config/config.yaml` (хосты `mpd-rock` / `mpd-jazz` уже совпадают с compose).
+2. Положите музыку в `music/rock` и `music/jazz` (или загрузите через UI).
+3. Запустите стек:
 
 ```bash
 docker compose up -d --build
 ```
 
-Панель: [http://localhost:8080](http://localhost:8080)
+| Сервис     | URL / порт |
+|------------|------------|
+| Панель     | http://localhost:8080 |
+| Rock MPD   | `localhost:6601` (`mpc -h 127.0.0.1 -p 6601`) |
+| Rock stream| http://localhost:8001 |
+| Jazz MPD   | `localhost:6602` |
+| Jazz stream| http://localhost:8002 |
 
-| Сервис      | Порт MPD (хост) | HTTP-поток |
-|-------------|-----------------|------------|
-| Rock Radio  | `6601`          | `8001`     |
-| Jazz Radio  | `6602`          | `8002`     |
+Порты хоста можно переопределить через `.env` (см. `.env.example`).
 
-Классический `mpc` по-прежнему работает:
+Остановка:
 
 ```bash
-mpc -h 127.0.0.1 -p 6601 status
-mpc -h 127.0.0.1 -p 6602 status
+docker compose down
 ```
 
 ## Только панель (свои MPD уже запущены)
