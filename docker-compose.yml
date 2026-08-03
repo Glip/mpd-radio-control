@@ -1,0 +1,99 @@
+# Radio Desk — панель + два MPD для интернет-радио
+#
+# Запуск:
+#   docker compose up -d --build
+#
+# UI:            http://localhost:8080
+# Rock MPD/mpc:  localhost:6601
+# Rock stream:   http://localhost:8001
+# Jazz MPD/mpc:  localhost:6602
+# Jazz stream:   http://localhost:8002
+#
+# Станции и пути музыки задаются в config/config.yaml
+
+name: mpd-radio-control
+
+services:
+  radio-desk:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: radio-desk:latest
+    container_name: radio-desk
+    restart: unless-stopped
+    ports:
+      - "${RADIO_DESK_PORT:-8080}:8080"
+    volumes:
+      - ./config/config.yaml:/config/config.yaml:ro
+      - ./music/rock:/music/rock
+      - ./music/jazz:/music/jazz
+    networks:
+      - radio
+    depends_on:
+      mpd-rock:
+        condition: service_healthy
+      mpd-jazz:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  mpd-rock:
+    build:
+      context: ./mpd
+      dockerfile: Dockerfile
+    image: mpd-radio:latest
+    container_name: mpd-rock
+    hostname: mpd-rock
+    restart: unless-stopped
+    volumes:
+      - ./music/rock:/music
+      - ./mpd/rock/mpd.conf:/config/mpd.conf:ro
+      - mpd_rock_data:/var/lib/mpd
+    ports:
+      - "${MPD_ROCK_PORT:-6601}:6600"
+      - "${MPD_ROCK_STREAM_PORT:-8001}:8000"
+    networks:
+      - radio
+    healthcheck:
+      test: ["CMD", "mpc", "-h", "127.0.0.1", "-p", "6600", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mpd-jazz:
+    build:
+      context: ./mpd
+      dockerfile: Dockerfile
+    image: mpd-radio:latest
+    container_name: mpd-jazz
+    hostname: mpd-jazz
+    restart: unless-stopped
+    volumes:
+      - ./music/jazz:/music
+      - ./mpd/jazz/mpd.conf:/config/mpd.conf:ro
+      - mpd_jazz_data:/var/lib/mpd
+    ports:
+      - "${MPD_JAZZ_PORT:-6602}:6600"
+      - "${MPD_JAZZ_STREAM_PORT:-8002}:8000"
+    networks:
+      - radio
+    healthcheck:
+      test: ["CMD", "mpc", "-h", "127.0.0.1", "-p", "6600", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  radio:
+    name: radio-net
+    driver: bridge
+
+volumes:
+  mpd_rock_data:
+  mpd_jazz_data:
